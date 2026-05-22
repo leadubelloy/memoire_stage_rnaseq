@@ -28,12 +28,7 @@ L'analyse bio-informatique comprend :
 
 | Fichier | Description |
 |---------|-------------|
-| `01_filtrage_ARNm.R` | Filtrage et sélection des ARNm dérégulés à partir des résultats DESeq2 pré-calculés (tidyverse) |
-| `02_filtrage_miARN.R` | Filtrage et sélection des miARN dérégulés à partir des résultats DESeq2 pré-calculés (tidyverse) |
-| `03_visualisation.R` | Volcano plots, MA plots, Venn, heatmap (ggplot2, ggrepel, ggvenn, pheatmap) |
-| `04_enrichissement_clusterProfiler.R` | ORA GO:BP, KEGG, GSEA (clusterProfiler, org.Mm.eg.db) |
-| `05_multiMiR_validation.R` | Intégration miARN/ARNm — interactions validées (multiMiR : miRTarBase, TarBase) |
-| `06_miRWalk_filtrage.R` | Intégration miARN/ARNm — interactions prédites (miRWalk : seed = 1, bindingp ≥ 0,95) |
+| `analyse_complete.Rmd` | Script R Markdown unique contenant l'ensemble de l'analyse : filtrage des ARNm et miARN, visualisation (volcano plots, MA plots, heatmap, Venn), enrichissement fonctionnel GO/KEGG/GSEA, intégration miARN/ARNm (multiMiR, miRWalk) |
 
 ### Figures
 

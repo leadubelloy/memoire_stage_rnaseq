@@ -1,107 +1,106 @@
 # Comparative study of transcriptomic profiles (mRNA and miRNA) induced by exposure to conventional cigarettes and heated tobacco in mice
 
 ## Description
-Ce dépôt contient les scripts bio-informatiques utilisés dans le cadre du mémoire de stage de Master 1 Bio-informatique, parcours OMICS and Systems Biology, à l'Université de Lille — Faculté des Sciences et Technologies, réalisé au sein du laboratoire IMPECS (ULR 4483), Pôle Recherche, Lille.
+This repository contains the bioinformatic scripts used in the context of a Master 1 internship in Bioinformatics, OMICS and Systems Biology track, at the University of Lille — Faculty of Science and Technology, conducted within the IMPECS laboratory (ULR 4483), Research Center, Lille.
 
-L'étude porte sur les dérégulations transcriptomiques induites par l'exposition à la **fumée de cigarette conventionnelle (1R6F)** et au **tabac chauffé (IQOS)** chez la souris (*Mus musculus*, souche A/J mâle), à partir de données RNA-seq (ARNm) et small RNA-seq (miARN) issues de tissu pulmonaire.
+The study investigates transcriptomic dysregulations induced by exposure to **conventional cigarette smoke (1R6F)** and **heated tobacco (IQOS)** in mice (*Mus musculus*, A/J male strain), based on RNA-seq (mRNA) and small RNA-seq (miRNA) data from lung tissue.
 
-- **Maître de stage** : Dr. Sébastien Anthérieu
-- **Tutrice académique** : Dr. Morgane Baron
-- **Année** : 2025-2026
-
----
-
-## Stratégie d'analyse
-
-L'analyse bio-informatique comprend :
-- Un **filtrage des ARNm et miARN dérégulés** à partir de données DESeq2 pré-calculées fournies par le laboratoire IMPECS
-- Une **visualisation** des données (volcano plots, MA plots, heatmap, diagrammes de Venn)
-- Un **enrichissement fonctionnel** GO:BP (ORA et GSEA) et KEGG (clusterProfiler)
-- Une **intégration miARN/ARNm** par interactions validées (multiMiR) et prédites (miRWalk)
-- Une **analyse de réseaux PPI** (STRING-db v12.0)
+- **Internship supervisor** : Dr. Sébastien Anthérieu
+- **Academic tutor** : Dr. Morgane Baron
+- **Year** : 2025-2026
 
 ---
 
-## Contenu du dépôt
+## Analysis strategy
+
+The bioinformatic analysis includes :
+- **Filtering of dysregulated mRNAs and miRNAs** from DESeq2 pre-processed data provided by the IMPECS laboratory
+- **Data visualization** (volcano plots, MA plots, heatmap, Venn diagrams)
+- **Functional enrichment** GO:BP (ORA and GSEA) and KEGG (clusterProfiler)
+- **miRNA/mRNA integration** using validated (multiMiR) and predicted (miRWalk) interactions
+- **PPI network analysis** (STRING-db v12.0)
+
+---
+
+## Repository structure
 
 ### Scripts
 
-| Fichier | Description |
-|---------|-------------|
-| `analyse_complete.Rmd` | Script R Markdown unique contenant l'ensemble de l'analyse : filtrage des ARNm et miARN, visualisation (volcano plots, MA plots, heatmap, Venn), enrichissement fonctionnel GO/KEGG/GSEA, intégration miARN/ARNm (multiMiR, miRWalk) |
+| File | Description |
+|------|-------------|
+| `analyse_complete.Rmd` | Single R Markdown script containing the complete analysis: mRNA and miRNA filtering, visualization (volcano plots, MA plots, heatmap, Venn diagrams), functional enrichment GO/KEGG/GSEA, miRNA/mRNA integration (multiMiR, miRWalk) |
 
 ### Figures
 
-| Dossier | Contenu |
-|---------|---------|
-| `volcano_plots/` | Volcano plots ARNm et miARN |
-| `MA_plots/` | MA plots ARNm (cigarette et tabac chauffé) |
-| `venn_diagrams/` | Diagrammes de Venn ARNm et miARN |
-| `heatmap/` | Heatmap des 41 DEGs communs |
-| `enrichissement/` | Dotplots GO:BP ORA/GSEA et barplot KEGG |
-| `reseaux_PPI/` | Réseaux STRING-db (cigarette, tabac chauffé, commun) |
----
-
-## Seuils de significativité
-
-| Données | Critère | Fold Change |
-|---------|---------|-------------|
-| ARNm — cigarette | padj < 0,05 | \|log2FC\| ≥ 0,585 |
-| ARNm — tabac chauffé | padj < 0,05 | \|log2FC\| ≥ 0,585 |
-| miARN — cigarette | p-value brute < 0,05 | \|log2FC\| ≥ 0,585 |
-| miARN — tabac chauffé | p-value brute < 0,05 | \|log2FC\| ≥ 0,585 |
-
-> La p-value brute (< 0,05) est utilisée pour les miARN des deux conditions afin de permettre une analyse comparative cohérente. Pour le tabac chauffé, aucun
-> miARN n'atteignait le seuil strict, tandis que pour la cigarette, le recours à la p-value brute permet d'élargir le panel au-delà des 8 miARN significatifs
-> après correction multiple. Les candidats identifiés nécessitent une validation expérimentale ultérieure.
+| Folder | Content |
+|--------|---------|
+| `volcano_plots/` | Volcano plots for mRNA and miRNA |
+| `MA_plots/` | MA plots for mRNA (cigarette and heated tobacco) |
+| `venn_diagrams/` | Venn diagrams for mRNA and miRNA |
+| `heatmap/` | Heatmap of the 41 common DEGs |
+| `enrichissement/` | GO:BP ORA/GSEA dotplots and KEGG barplot |
+| `reseaux_PPI/` | STRING-db networks (cigarette, heated tobacco, common) |
 
 ---
 
-## Intégration miARN/ARNm
+## Significance thresholds
 
-L'intégration suit la logique canonique de répression post-transcriptionnelle :
-- **miARN UP × ARNm DOWN** : identification des cibles réprimées
-- **miARN DOWN × ARNm UP** : identification des cibles déréprimées
+| Data | Criterion | Fold Change |
+|------|-----------|-------------|
+| mRNA — cigarette | padj < 0.05 | \|log2FC\| ≥ 0.585 |
+| mRNA — heated tobacco | padj < 0.05 | \|log2FC\| ≥ 0.585 |
+| miRNA — cigarette | raw p-value < 0.05 | \|log2FC\| ≥ 0.585 |
+| miRNA — heated tobacco | raw p-value < 0.05 | \|log2FC\| ≥ 0.585 |
 
-Deux niveaux de preuve complémentaires :
-1. **Interactions validées** — package R `multiMiR` v1.32.0 (bases miRTarBase, TarBase)
-2. **Interactions prédites** — miRWalk v3 (seed = 1, bindingp ≥ 0,95)
-
----
-
-## Logiciels et versions
-
-| Outil | Version | Usage |
-|-------|---------|-------|
-| R | 4.5.2 | Environnement d'analyse |
-| tidyverse (dplyr, tidyr) | 2.0.0 | Manipulation des données |
-| ggplot2 | 4.0.2 | Visualisation |
-| ggrepel | 0.9.6 | Annotation des volcano plots |
-| ggvenn | 0.1.19 | Diagrammes de Venn |
-| pheatmap | 1.0.13 | Heatmap des DEGs communs |
-| clusterProfiler | 4.18.4 | Enrichissement fonctionnel GO/KEGG/GSEA |
-| org.Mm.eg.db | 3.22.0 | Annotation génomique *Mus musculus* |
-| multiMiR | 1.32.0 | Intégration miARN/ARNm validée |
-| openxlsx | 4.2.8.1 | Export des paires d'interaction |
-| STRING-db | v12.0 | Réseaux PPI (web, *Mus musculus*) |
-| miRWalk | v3 | Interactions prédites miARN/ARNm |
+> Raw p-value (< 0.05) was used for miRNAs in both conditions to allow consistent comparative analysis. For heated tobacco, no miRNA reached significance after multiple testing correction, while for cigarette, the relaxed threshold extends the panel beyond the 8 miRNAs significant after BH correction. All identified candidates require further experimental validation.
 
 ---
 
-## Principaux résultats
+## miRNA/mRNA integration
 
-| Condition | ARNm dérégulés | miARN dérégulés | Hub miARN | Profil biologique dominant |
-|-----------|----------------|-----------------|-----------|----------------------------|
-| Cigarette conventionnelle | 535 (410 UP / 125 DOWN) | 24 (15 UP / 9 DOWN) | mmu-miR-21a-5p (19 cibles) | Génotoxicité, instabilité génomique, inflammation neutrophilique |
-| Tabac chauffé (IQOS) | 84 (28 UP / 56 DOWN) | 20 (14 UP / 6 DOWN) | mmu-miR-1a-3p (15 cibles) | Remodelage ECM, perturbation circadienne, immunosuppression |
-| Commun | 41 ARNm (dont *Lilrb4b* inversé) | 1 (mmu-miR-135b-5p, sens inversé) | — | Perturbation circadienne, inflammation IL-17 |
+Integration follows the canonical post-transcriptional repression logic :
+- **miRNA UP × mRNA DOWN** : identification of repressed targets
+- **miRNA DOWN × mRNA UP** : identification of derepressed targets
 
-> **Core miARN-régulé commun** : *Dio2*, *Ikzf4*, *Nfil3*, *Npas2*, *S100a8*, *Spaar*
+Two complementary levels of evidence :
+1. **Validated interactions** — R package `multiMiR` v1.32.0 (miRTarBase, TarBase databases)
+2. **Predicted interactions** — miRWalk v3 (filters: seed = 1, bindingp ≥ 0.95)
 
 ---
 
-## Auteure
+## Software and versions
 
-**DUBELLOY Léa** — Master 1 Bio-informatique, parcours OMICS and Systems Biology  
-Université de Lille — Faculté des Sciences et Technologies  
-Laboratoire IMPECS (ULR 4483), Pôle Recherche, Lille — Année 2025-2026
+| Tool | Version | Usage |
+|------|---------|-------|
+| R | 4.5.2 | Analysis environment |
+| tidyverse (dplyr, tidyr) | 2.0.0 | Data manipulation |
+| ggplot2 | 4.0.2 | Visualization |
+| ggrepel | 0.9.6 | Volcano plot annotation |
+| ggvenn | 0.1.19 | Venn diagrams |
+| pheatmap | 1.0.13 | Common DEGs heatmap |
+| clusterProfiler | 4.18.4 | Functional enrichment GO/KEGG/GSEA |
+| org.Mm.eg.db | 3.22.0 | *Mus musculus* genomic annotation |
+| multiMiR | 1.32.0 | Validated miRNA/mRNA integration |
+| openxlsx | 4.2.8.1 | Interaction pairs export |
+| STRING-db | v12.0 | PPI networks (web, *Mus musculus*) |
+| miRWalk | v3 | Predicted miRNA/mRNA interactions |
+
+---
+
+## Key results
+
+| Condition | Dysregulated mRNAs | Dysregulated miRNAs | Hub miRNA | Dominant biological profile |
+|-----------|-------------------|---------------------|-----------|----------------------------|
+| Conventional cigarette | 535 (410 UP / 125 DOWN) | 24 (15 UP / 9 DOWN) | mmu-miR-21a-5p (19 targets) | Genotoxicity, genomic instability, neutrophilic inflammation |
+| Heated tobacco (IQOS) | 84 (28 UP / 56 DOWN) | 20 (14 UP / 6 DOWN) | mmu-miR-1a-3p (15 targets) | ECM remodeling, circadian disruption, immunosuppression |
+| Common | 41 mRNAs (incl. *Lilrb4b* inversed) | 1 (mmu-miR-135b-5p, opposite regulation) | — | Circadian disruption, IL-17 inflammation |
+
+> **Common miRNA-regulated core** : *Dio2*, *Ikzf4*, *Nfil3*, *Npas2*, *S100a8*, *Spaar*
+
+---
+
+## Author
+
+**DUBELLOY Léa** — Master 1 Bioinformatics, OMICS and Systems Biology track  
+University of Lille — Faculty of Science and Technology  
+IMPECS Laboratory (ULR 4483), Research Center, Lille — 2025-2026

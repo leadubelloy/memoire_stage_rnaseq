@@ -1,0 +1,665 @@
+---
+title: "Analyse intégrative RNA-seq / small RNA-seq (ARNm & miARN) chez la souris"
+author: "Léa Dubelloy"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# ============================================================
+# 1. CONFIGURATION GÉNÉRALE
+# ============================================================
+
+```{r setup, message=FALSE, warning=FALSE}
+
+# --- Packages ---
+library(tidyverse)        # dplyr, ggplot2, tidyr, stringr, etc.
+library(ggrepel)          # Labels volcano plots
+library(ggvenn)           # Diagrammes de Venn
+library(pheatmap)         # Heatmap
+library(scales)           # Axes
+library(clusterProfiler)  # Enrichissement GO / KEGG / GSEA
+library(org.Mm.eg.db)     # Annotations Mus musculus
+library(multiMiR)         # Intégration miARN/ARNm validée
+library(openxlsx)         # Export Excel
+
+# --- Seuils globaux ---
+LFC  <- log2(1.5)  # = 0.585
+PADJ <- 0.05       # p-value ajustée (ARNm)
+PVAL <- 0.05       # p-value brute (miARN)
+
+# --- Options ggplot ---
+theme_set(theme_minimal(base_size = 12))
+options(scipen = 999)
+```
+
+
+# ============================================================
+# 2. CHARGEMENT & PRÉPARATION DES DONNÉES
+# ============================================================
+
+```{r chargement}
+# Fonction de nettoyage : virgules -> points
+clean_num <- function(df, cols) {
+  df %>% mutate(across(all_of(cols), ~ as.numeric(gsub(",", ".", .))))
+}
+
+# --- ARNm ---
+cigar_df <- read.csv("CIGAR vs CTRL2 ARNm.csv") %>%
+  clean_num(c("log2FoldChange", "padj", "baseMean", "pvalue"))
+
+tabac_df <- read.csv("TABAC vs CTRL1 ARNm.csv") %>%
+  clean_num(c("log2FoldChange", "padj", "baseMean", "pvalue"))
+
+# --- miARN ---
+cigar_mi <- read.csv("CIGAR vs CTRL2 miARN.csv") %>%
+  clean_num(c("log2FoldChange", "pvalue", "padj"))
+
+tabac_mi <- read.csv("TABAC vs CTRL1 miARN.csv") %>%
+  clean_num(c("log2FoldChange", "pvalue", "padj"))
+
+cat("ARNm Cigarette :", nrow(cigar_df), "lignes\n")
+cat("ARNm Tabac     :", nrow(tabac_df), "lignes\n")
+cat("miARN Cigarette:", nrow(cigar_mi), "lignes\n")
+cat("miARN Tabac    :", nrow(tabac_mi), "lignes\n")
+cat("\nNA padj ARNm - Cigarette :", sum(is.na(cigar_df$padj)), "\n")
+cat("NA padj ARNm - Tabac     :", sum(is.na(tabac_df$padj)), "\n")
+```
+
+
+# ============================================================
+# 3. FILTRAGE DES GÈNES ET miARN DÉRÉGULÉS
+# ============================================================
+
+```{r filtrage_arnm}
+# --- ARNm : seuil padj < 0.05 & |log2FC| >= log2(1.5) ---
+ajouter_regulation_arnm <- function(df) {
+  df %>% mutate(
+    regulation = case_when(
+      padj < PADJ & log2FoldChange >=  LFC ~ "UP",
+      padj < PADJ & log2FoldChange <= -LFC ~ "DOWN",
+      TRUE ~ "NS"
+    )
+  )
+}
+
+cigar_df <- ajouter_regulation_arnm(cigar_df)
+tabac_df <- ajouter_regulation_arnm(tabac_df)
+
+# Listes geneID par groupe (ENSEMBL)
+cigar_up   <- cigar_df %>% filter(regulation == "UP")   %>% pull(geneID)
+cigar_down <- cigar_df %>% filter(regulation == "DOWN") %>% pull(geneID)
+tabac_up   <- tabac_df %>% filter(regulation == "UP")   %>% pull(geneID)
+tabac_down <- tabac_df %>% filter(regulation == "DOWN") %>% pull(geneID)
+
+# Gènes communs
+communs_up         <- intersect(cigar_up,   tabac_up)
+communs_down       <- intersect(cigar_down, tabac_down)
+genes_communs_tous <- intersect(union(cigar_up, cigar_down), union(tabac_up, tabac_down))
+gene_divergent     <- setdiff(genes_communs_tous, c(communs_up, communs_down))
+
+cat("ARNm significatifs - Cigarette :", length(cigar_up) + length(cigar_down),
+    "(", length(cigar_up), "UP /", length(cigar_down), "DOWN)\n")
+cat("ARNm significatifs - Tabac     :", length(tabac_up) + length(tabac_down),
+    "(", length(tabac_up), "UP /", length(tabac_down), "DOWN)\n")
+cat("ARNm communs (tous)  :", length(genes_communs_tous), "\n")
+cat("  dont UP/UP         :", length(communs_up), "\n")
+cat("  dont DOWN/DOWN     :", length(communs_down), "\n")
+cat("  dont sens opposé   :", length(gene_divergent), "->", gene_divergent, "\n")
+```
+
+```{r filtrage_mirna}
+# --- miARN : p-value BRUTE < 0.05 & |log2FC| >= log2(1.5) ---
+# Justification : aucun miARN significatif après correction BH (padj ~0.987 tabac),
+# p-value brute utilisée pour les deux conditions pour comparaison cohérente.
+
+ajouter_regulation_mirna <- function(df) {
+  df %>% mutate(
+    regulation = case_when(
+      pvalue < PVAL & log2FoldChange >=  LFC ~ "Sur-exprimé",
+      pvalue < PVAL & log2FoldChange <= -LFC ~ "Sous-exprimé",
+      TRUE ~ "Non significatif"
+    )
+  )
+}
+
+cigar_mi <- ajouter_regulation_mirna(cigar_mi)
+tabac_mi <- ajouter_regulation_mirna(tabac_mi)
+
+sig_cigar_mi <- cigar_mi %>% filter(regulation != "Non significatif")
+sig_tabac_mi <- tabac_mi %>% filter(regulation != "Non significatif")
+mi_communs   <- intersect(sig_cigar_mi$geneID, sig_tabac_mi$geneID)
+
+cat("miARN significatifs - Cigarette :", nrow(sig_cigar_mi),
+    "(", sum(sig_cigar_mi$regulation == "Sur-exprimé"), "UP /",
+    sum(sig_cigar_mi$regulation == "Sous-exprimé"), "DOWN)\n")
+cat("miARN significatifs - Tabac     :", nrow(sig_tabac_mi),
+    "(", sum(sig_tabac_mi$regulation == "Sur-exprimé"), "UP /",
+    sum(sig_tabac_mi$regulation == "Sous-exprimé"), "DOWN)\n")
+cat("miARN communs       :", length(mi_communs), "->", mi_communs, "\n")
+```
+
+
+# ============================================================
+# 4. VISUALISATION ARNm
+# ============================================================
+
+```{r volcano_arnm}
+# Fonction générique volcano plot ARNm
+plot_volcano_arnm <- function(df, titre, top_n = 10) {
+  top_labels <- df %>%
+    filter(regulation != "NS") %>%
+    arrange(padj) %>%
+    head(top_n) %>%
+    pull(symbol)
+
+  ggplot(df, aes(x = log2FoldChange, y = -log10(padj), color = regulation)) +
+    geom_point(alpha = 0.4, size = 1.5) +
+    geom_text_repel(
+      aes(label = ifelse(symbol %in% top_labels, symbol, "")),
+      max.overlaps = Inf, show.legend = FALSE,
+      box.padding = 0.5, fontface = "italic"
+    ) +
+    scale_color_manual(
+      values = c("DOWN" = "#377EB8", "NS" = "grey60", "UP" = "#E41A1C"),
+      labels = c("DOWN" = "Downregulated", "NS" = "Non-significant", "UP" = "Upregulated"),
+      name = "Regulation"
+    ) +
+    geom_vline(xintercept = c(-LFC, LFC), linetype = "dashed", color = "black") +
+    geom_hline(yintercept = -log10(PADJ), linetype = "dashed", color = "black") +
+    labs(title    = titre,
+         subtitle = paste0("Seuils : padj < ", PADJ, " ; |FC| > 1.5"),
+         x = "log2 Fold Change", y = "-log10(padj)") +
+    theme(plot.title = element_text(face = "bold"))
+}
+
+p_volcano_cigar <- plot_volcano_arnm(cigar_df, "Volcano Plot ARNm : Cigarette vs Contrôle")
+p_volcano_tabac <- plot_volcano_arnm(tabac_df, "Volcano Plot ARNm : Tabac Chauffé vs Contrôle")
+
+print(p_volcano_cigar)
+ggsave("Volcano_ARNm_Cigarette.png", plot = p_volcano_cigar, width = 10, height = 6, dpi = 300)
+
+print(p_volcano_tabac)
+ggsave("Volcano_ARNm_Tabac_Chauffe.png", plot = p_volcano_tabac, width = 10, height = 6, dpi = 300)
+```
+
+```{r ma_plots}
+# Fonction générique MA plot
+plot_ma <- function(df, titre) {
+  n_up   <- sum(df$regulation == "UP",   na.rm = TRUE)
+  n_down <- sum(df$regulation == "DOWN", na.rm = TRUE)
+
+  ggplot(df, aes(x = baseMean, y = log2FoldChange, color = regulation)) +
+    geom_point(alpha = 0.4, size = 0.8) +
+    scale_x_log10(
+      labels = scales::comma,
+      breaks = c(1, 10, 100, 1000, 10000)
+    ) +
+    scale_color_manual(
+      values = c("UP" = "#E41A1C", "DOWN" = "#377EB8", "NS" = "grey60"),
+      labels = c("UP" = "Upregulated", "DOWN" = "Downregulated", "NS" = "Non-significant"),
+      name = "Regulation"
+    ) +
+    geom_hline(yintercept = c(-LFC, LFC), linetype = "dashed", color = "black", linewidth = 0.5) +
+    geom_hline(yintercept = 0,            linetype = "solid",  color = "black", linewidth = 0.3) +
+    labs(title    = titre,
+         subtitle = paste0("Seuils : padj < ", PADJ, " et |FC| > 1.5"),
+         x = "Mean Expression (baseMean)", y = "Log2 Fold Change") +
+    theme(legend.position = "right",
+          plot.title = element_text(face = "bold"),
+          panel.grid.minor = element_blank())
+}
+
+p_ma_cigar <- plot_ma(cigar_df, "MA Plot : Cigarette vs Contrôle")
+p_ma_tabac <- plot_ma(tabac_df, "MA Plot : Tabac Chauffé vs Contrôle")
+
+print(p_ma_cigar)
+ggsave("MA_Plot_Cigarette.png", plot = p_ma_cigar, width = 8, height = 6, dpi = 300)
+
+print(p_ma_tabac)
+ggsave("MA_Plot_Tabac_Chauffe.png", plot = p_ma_tabac, width = 8, height = 6, dpi = 300)
+```
+
+```{r venn_arnm}
+# Diagramme de Venn ARNm — Global, UP, DOWN
+cigar_all_ids  <- union(cigar_up, cigar_down)
+tabac_all_ids  <- union(tabac_up, tabac_down)
+
+style_venn <- list(stroke_size = 0.5, set_name_size = 4,
+                   text_size = 4, show_percentage = FALSE)
+
+make_venn <- function(liste, couleurs, titre, sous_titre) {
+  ggvenn(liste,
+         fill_color      = couleurs,
+         stroke_size     = style_venn$stroke_size,
+         set_name_size   = style_venn$set_name_size,
+         text_size       = style_venn$text_size,
+         show_percentage = style_venn$show_percentage) +
+    labs(title = titre, subtitle = sous_titre) +
+    theme(plot.title    = element_text(face = "bold", hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5))
+}
+
+p_venn_global <- make_venn(
+  list(Cigarette = cigar_all_ids, `Tabac Chauffé` = tabac_all_ids),
+  c("#4DAF4A", "#984EA3"),
+  "Diagramme de Venn des ARNm dérégulés (global)",
+  "Seuils : padj < 0.05 ; |FC| > 1.5"
+)
+p_venn_up <- make_venn(
+  list(Cigarette = cigar_up, `Tabac Chauffé` = tabac_up),
+  c("firebrick2", "firebrick2"),
+  "Gènes ARNm UP",
+  "Seuils : padj < 0.05 ; FC > 1.5"
+)
+p_venn_down <- make_venn(
+  list(Cigarette = cigar_down, `Tabac Chauffé` = tabac_down),
+  c("#337ab7", "#337ab7"),
+  "Gènes ARNm DOWN",
+  "Seuils : padj < 0.05 ; FC < -1.5"
+)
+
+print(p_venn_global)
+ggsave("Venn_ARNm_Global.png", plot = p_venn_global, width = 8, height = 7, dpi = 300)
+print(p_venn_up)
+ggsave("Venn_ARNm_UP.png",     plot = p_venn_up,     width = 8, height = 7, dpi = 300)
+print(p_venn_down)
+ggsave("Venn_ARNm_DOWN.png",   plot = p_venn_down,   width = 8, height = 7, dpi = 300)
+```
+
+```{r heatmap_communs}
+# Heatmap des 41 ARNm communs
+merged_communs <- merge(
+  cigar_df %>% filter(geneID %in% genes_communs_tous) %>% dplyr::select(geneID, log2FoldChange),
+  tabac_df %>% filter(geneID %in% genes_communs_tous) %>% dplyr::select(geneID, log2FoldChange),
+  by = "geneID", suffixes = c("_CIGAR", "_TABAC")
+) %>%
+  distinct(geneID, .keep_all = TRUE) %>%
+  filter(geneID != "" & !is.na(geneID))
+
+rownames(merged_communs) <- merged_communs$geneID
+heatmap_matrix <- as.matrix(merged_communs[, c("log2FoldChange_CIGAR", "log2FoldChange_TABAC")])
+
+cat("Nombre de gènes dans la heatmap :", nrow(heatmap_matrix), "\n")
+
+# Affichage
+pheatmap(heatmap_matrix,
+         main         = "Signature commune (41 ARNm) : Cigarette vs Tabac chauffé",
+         color        = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+         cluster_cols = FALSE, cluster_rows = TRUE,
+         fontsize_row = 5, fontsize_col = 10,
+         cellwidth = 40, border_color = NA, angle_col = 45)
+
+# Enregistrement
+pheatmap(heatmap_matrix,
+         main         = "Signature commune (41 ARNm) : Cigarette vs Tabac chauffé",
+         color        = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+         cluster_cols = FALSE, cluster_rows = TRUE,
+         fontsize_row = 5, fontsize_col = 10,
+         cellwidth = 40, border_color = NA, angle_col = 45,
+         filename = "Heatmap_Signature_Commune.png", width = 7, height = 10)
+```
+
+
+# ============================================================
+# 5. VISUALISATION miARN
+# ============================================================
+
+```{r volcano_mirna}
+# Fonction générique volcano plot miARN (p-value brute)
+plot_volcano_mirna <- function(df, sig_df, titre, top_n = 3) {
+  top_labels <- sig_df %>% arrange(pvalue) %>% head(top_n) %>% pull(geneID)
+
+  ggplot(df, aes(x = log2FoldChange, y = -log10(pvalue), color = regulation)) +
+    geom_point(alpha = 0.4, size = 1.5) +
+    geom_text_repel(
+      aes(label = ifelse(geneID %in% top_labels, geneID, "")),
+      max.overlaps = Inf, show.legend = FALSE,
+      box.padding = 0.5, fontface = "italic"
+    ) +
+    scale_color_manual(
+      values = c("Sous-exprimé"     = "#377EB8",
+                 "Non significatif" = "grey60",
+                 "Sur-exprimé"      = "#E41A1C"),
+      labels = c("Sous-exprimé"     = "Downregulated",
+                 "Non significatif" = "Non-significant",
+                 "Sur-exprimé"      = "Upregulated"),
+      name = "Regulation"
+    ) +
+    geom_vline(xintercept = c(-LFC, LFC), linetype = "dashed", color = "black") +
+    geom_hline(yintercept = -log10(PVAL), linetype = "dashed", color = "black") +
+    labs(title    = titre,
+         subtitle = paste0("Seuils : p-value brute < ", PVAL, " ; |FC| > 1.5"),
+         x = "log2 Fold Change", y = "-log10(p-value)") +
+    theme(plot.title = element_text(face = "bold"))
+}
+
+p_volcano_cigar_mi <- plot_volcano_mirna(cigar_mi, sig_cigar_mi, "Volcano Plot miARN : Cigarette")
+p_volcano_tabac_mi <- plot_volcano_mirna(tabac_mi, sig_tabac_mi, "Volcano Plot miARN : Tabac Chauffé")
+
+print(p_volcano_cigar_mi)
+ggsave("Volcano_miARN_Cigarette.png", plot = p_volcano_cigar_mi, width = 8, height = 6, dpi = 300)
+
+print(p_volcano_tabac_mi)
+ggsave("Volcano_miARN_Tabac_Chauffe.png", plot = p_volcano_tabac_mi, width = 8, height = 6, dpi = 300)
+```
+
+```{r pie_charts_mirna}
+# Fonction générique pie chart miARN
+plot_pie_mirna <- function(sig_df, condition_name) {
+  df_counts <- sig_df %>%
+    mutate(Status = ifelse(log2FoldChange > 0, "Up", "Down")) %>%
+    group_by(Status) %>%
+    summarise(Count = n(), .groups = "drop") %>%
+    mutate(Percentage = round(Count / sum(Count) * 100, 1))
+
+  ggplot(df_counts, aes(x = "", y = Count, fill = Status)) +
+    geom_bar(stat = "identity", width = 1, color = "white") +
+    coord_polar("y", start = 0) +
+    theme_void() +
+    scale_fill_manual(values = c("Down" = "#3498db", "Up" = "#e74c3c"),
+                      name = "Expression") +
+    geom_text(aes(label = paste0(Count, " (", Percentage, "%)")),
+              position = position_stack(vjust = 0.5),
+              color = "white", fontface = "bold") +
+    labs(title    = "Répartition des miARN dérégulés",
+         subtitle = paste0("Condition : ", condition_name,
+                           " (Total = ", sum(df_counts$Count), ")")) +
+    theme(plot.title    = element_text(hjust = 0.5, face = "bold", size = 14),
+          plot.subtitle = element_text(hjust = 0.5, size = 11))
+}
+
+p_pie_cigar <- plot_pie_mirna(sig_cigar_mi, "Cigarette")
+p_pie_tabac <- plot_pie_mirna(sig_tabac_mi, "Tabac Chauffé")
+
+print(p_pie_cigar)
+ggsave("PieChart_miARN_Cigarette.png", plot = p_pie_cigar, width = 7, height = 7, dpi = 300)
+
+print(p_pie_tabac)
+ggsave("PieChart_miARN_Tabac_Chauffe.png", plot = p_pie_tabac, width = 7, height = 7, dpi = 300)
+```
+
+```{r venn_mirna}
+# Diagramme de Venn miARN
+p_venn_mirna <- make_venn(
+  list(Cigarette = sig_cigar_mi$geneID, `Tabac Chauffé` = sig_tabac_mi$geneID),
+  c("#4DAF4A", "#984EA3"),
+  "Diagramme de Venn des miARN dérégulés",
+  "Seuils : p-value brute < 0.05 ; |FC| > 1.5"
+)
+
+print(p_venn_mirna)
+ggsave("Venn_miARN.png", plot = p_venn_mirna, width = 8, height = 7, dpi = 300)
+```
+
+```{r barplot_mirna_commun}
+# Barplot du miARN commun (mmu-miR-135b-5p) — sens opposé entre les deux conditions
+if (length(mi_communs) > 0) {
+  val_cigar <- sig_cigar_mi %>% filter(geneID == mi_communs[1]) %>% pull(log2FoldChange)
+  val_tabac <- sig_tabac_mi %>% filter(geneID == mi_communs[1]) %>% pull(log2FoldChange)
+
+  df_commun_mi <- data.frame(
+    Condition = c("Cigarette", "Heated tobacco"),
+    Log2FC    = c(val_cigar, val_tabac)
+  )
+
+  p_commun_mi <- ggplot(df_commun_mi, aes(x = Condition, y = Log2FC, fill = Condition)) +
+    geom_bar(stat = "identity", width = 0.6) +
+    geom_text(aes(label = round(Log2FC, 2)), vjust = -0.5, fontface = "bold") +
+    scale_fill_manual(values = c("Cigarette" = "#e74c3c", "Heated tobacco" = "#f39c12")) +
+    labs(title    = paste("Log2FC :", mi_communs[1]),
+         subtitle = "Sole common miRNA between both conditions (opposite regulation)",
+         x = "", y = "Log2 Fold Change") +
+    theme(legend.position = "none",
+          plot.title = element_text(face = "bold", hjust = 0.5))
+
+  print(p_commun_mi)
+  ggsave(paste0("Barplot_miARN_commun_", mi_communs[1], ".png"),
+         plot = p_commun_mi, width = 7, height = 6, dpi = 300)
+}
+```
+
+
+# ============================================================
+# 6. ENRICHISSEMENT FONCTIONNEL
+# ============================================================
+
+```{r go_bp_ora}
+# Fonction générique ORA GO:BP (via geneID ENSEMBL)
+run_go_ora <- function(gene_ids, label) {
+  ego <- enrichGO(
+    gene          = gene_ids,
+    OrgDb         = org.Mm.eg.db,
+    keyType       = "ENSEMBL",
+    ont           = "BP",
+    pAdjustMethod = "BH",
+    pvalueCutoff  = 0.05,
+    qvalueCutoff  = 0.2,
+    readable      = TRUE
+  )
+  if (!is.null(ego) && nrow(ego) > 0) {
+    p <- dotplot(ego, showCategory = 15) +
+      ggtitle(paste("GO:BP ORA —", label)) +
+      theme(plot.title = element_text(face = "bold", hjust = 0.5))
+    return(list(plot = p, result = as.data.frame(ego)))
+  } else {
+    message("Pas d'enrichissement significatif pour : ", label)
+    return(NULL)
+  }
+}
+
+go_communs    <- run_go_ora(genes_communs_tous, "Gènes Communs (41)")
+go_cigar_up   <- run_go_ora(cigar_up,           "Cigarette — UP")
+go_cigar_down <- run_go_ora(cigar_down,          "Cigarette — DOWN")
+go_tabac_up   <- run_go_ora(tabac_up,            "Tabac Chauffé — UP")
+go_tabac_down <- run_go_ora(tabac_down,           "Tabac Chauffé — DOWN")
+
+for (res in list(
+  list(go_communs,    "GO_Communs.png"),
+  list(go_cigar_up,   "GO_Cigarette_UP.png"),
+  list(go_cigar_down, "GO_Cigarette_DOWN.png"),
+  list(go_tabac_up,   "GO_Tabac_UP.png"),
+  list(go_tabac_down, "GO_Tabac_DOWN.png")
+)) {
+  if (!is.null(res[[1]])) {
+    print(res[[1]]$plot)
+    ggsave(res[[2]], plot = res[[1]]$plot, width = 9, height = 7, dpi = 300)
+  }
+}
+```
+
+```{r kegg_ora}
+# Fonction générique KEGG ORA (conversion ENSEMBL -> EntrezID)
+run_kegg <- function(gene_ids, label, barplot = FALSE) {
+  ids <- bitr(gene_ids, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Mm.eg.db)
+  kk  <- enrichKEGG(gene = ids$ENTREZID, organism = "mmu",
+                    pvalueCutoff = 0.05, pAdjustMethod = "BH")
+  if (!is.null(kk) && nrow(kk) > 0) {
+    if (barplot) {
+      p <- barplot(kk, showCategory = 10, label_format = 80) +
+        scale_fill_gradient(low = "#E41A1C", high = "#377EB8", name = "P-adj") +
+        labs(title = paste("KEGG —", label), x = "Nombre de gènes (Count)") +
+        theme(plot.title = element_text(face = "bold", hjust = 0.5))
+    } else {
+      p <- dotplot(kk, showCategory = 10) +
+        ggtitle(paste("KEGG —", label)) +
+        theme(plot.title = element_text(face = "bold", hjust = 0.5))
+    }
+    return(list(plot = p, result = as.data.frame(kk)))
+  } else {
+    message("Pas d'enrichissement KEGG significatif pour : ", label)
+    return(NULL)
+  }
+}
+
+kegg_communs    <- run_kegg(genes_communs_tous, "Gènes Communs (41)", barplot = TRUE)
+kegg_cigar_up   <- run_kegg(cigar_up,           "Cigarette — UP")
+kegg_cigar_down <- run_kegg(cigar_down,          "Cigarette — DOWN")
+kegg_tabac_up   <- run_kegg(tabac_up,            "Tabac Chauffé — UP")
+kegg_tabac_down <- run_kegg(tabac_down,           "Tabac Chauffé — DOWN")
+
+for (res in list(
+  list(kegg_communs,    "KEGG_Communs.png"),
+  list(kegg_cigar_up,   "KEGG_Cigarette_UP.png"),
+  list(kegg_cigar_down, "KEGG_Cigarette_DOWN.png"),
+  list(kegg_tabac_up,   "KEGG_Tabac_UP.png"),
+  list(kegg_tabac_down, "KEGG_Tabac_DOWN.png")
+)) {
+  if (!is.null(res[[1]])) {
+    print(res[[1]]$plot)
+    ggsave(res[[2]], plot = res[[1]]$plot, width = 10, height = 6, dpi = 300)
+  }
+}
+```
+
+```{r gsea}
+# Fonction générique GSEA GO:BP (via geneID ENSEMBL)
+run_gsea <- function(df, label) {
+  gene_list <- df %>%
+    filter(!is.na(geneID) & geneID != "") %>%
+    group_by(geneID) %>%
+    summarise(log2FoldChange = mean(log2FoldChange, na.rm = TRUE), .groups = "drop") %>%
+    arrange(desc(log2FoldChange)) %>%
+    { setNames(.$log2FoldChange, .$geneID) }
+
+  gse <- gseGO(geneList      = gene_list,
+               OrgDb         = org.Mm.eg.db,
+               keyType       = "ENSEMBL",
+               ont           = "BP",
+               pvalueCutoff  = 0.05,
+               pAdjustMethod = "BH")
+
+  # Conversion ENSEMBL -> symboles pour les plots
+  gse <- setReadable(gse, OrgDb = org.Mm.eg.db, keyType = "ENSEMBL")
+
+  if (nrow(gse) > 0) {
+    p <- dotplot(gse, showCategory = 15, split = ".sign") +
+      facet_grid(.~.sign,
+                 labeller = as_labeller(c("activated" = "Activation",
+                                          "suppressed" = "Inhibition"))) +
+      scale_fill_continuous(low = "#377EB8", high = "#E41A1C", name = "p-adj") +
+      scale_y_discrete(labels = function(x) str_wrap(x, width = 40)) +
+      labs(title    = paste("GSEA GO:BP —", label),
+           subtitle = "Voies activées et inhibées") +
+      theme(plot.title       = element_text(face = "bold", hjust = 0.5, size = 14),
+            plot.subtitle    = element_text(hjust = 0.5),
+            panel.spacing    = unit(2, "lines"),
+            strip.background = element_rect(fill = "grey90", color = "white"),
+            strip.text       = element_text(face = "bold", size = 11),
+            axis.text.y      = element_text(size = 8))
+    return(list(plot = p, result = as.data.frame(gse)))
+  } else {
+    message("Pas de résultat GSEA significatif pour : ", label)
+    return(NULL)
+  }
+}
+
+gsea_cigar <- run_gsea(cigar_df, "Cigarette")
+gsea_tabac <- run_gsea(tabac_df, "Tabac Chauffé")
+
+if (!is.null(gsea_cigar)) {
+  print(gsea_cigar$plot)
+  ggsave("GSEA_Cigarette.png", plot = gsea_cigar$plot, width = 12, height = 9, dpi = 300)
+}
+if (!is.null(gsea_tabac)) {
+  print(gsea_tabac$plot)
+  ggsave("GSEA_Tabac_Chauffe.png", plot = gsea_tabac$plot, width = 12, height = 9, dpi = 300)
+}
+```
+
+
+# ============================================================
+# 7. INTÉGRATION miARN / ARNm (multiMiR)
+# ============================================================
+
+```{r extraction_listes_integration}
+# miARN UP x ARNm DOWN (répression canonique)
+cigar_mir_up    <- sig_cigar_mi %>% filter(regulation == "Sur-exprimé")  %>% pull(geneID)
+cigar_mrna_down <- cigar_df     %>% filter(regulation == "DOWN")          %>% pull(entrez)
+
+tabac_mir_up    <- sig_tabac_mi %>% filter(regulation == "Sur-exprimé")  %>% pull(geneID)
+tabac_mrna_down <- tabac_df     %>% filter(regulation == "DOWN")          %>% pull(entrez)
+
+# miARN DOWN x ARNm UP (dérépression)
+cigar_mir_down  <- sig_cigar_mi %>% filter(regulation == "Sous-exprimé") %>% pull(geneID)
+cigar_mrna_up   <- cigar_df     %>% filter(regulation == "UP")            %>% pull(entrez)
+
+tabac_mir_down  <- sig_tabac_mi %>% filter(regulation == "Sous-exprimé") %>% pull(geneID)
+tabac_mrna_up   <- tabac_df     %>% filter(regulation == "UP")            %>% pull(entrez)
+```
+
+```{r multimir}
+# Fonction multiMiR — interactions validées (miRTarBase, TarBase)
+get_multimir_pairs <- function(liste_mir, liste_entrez, label) {
+  if (length(liste_mir) == 0 || length(liste_entrez) == 0) {
+    message("Données insuffisantes pour : ", label)
+    return(NULL)
+  }
+  entrez_int <- as.integer(liste_entrez)
+  entrez_int <- entrez_int[!is.na(entrez_int)]
+
+  message("Requête multiMiR : ", label, "...")
+  res <- get_multimir(org = "mmu", mirna = liste_mir,
+                      table = "validated", summary = TRUE)
+
+  res@data %>%
+    filter(target_entrez %in% entrez_int) %>%
+    dplyr::select(mature_mirna_id, target_entrez, target_symbol, database, experiment) %>%
+    distinct()
+}
+
+# miARN UP / ARNm DOWN
+pairs_up_cigar   <- get_multimir_pairs(cigar_mir_up,   cigar_mrna_down, "Cigarette (miR UP / ARNm DOWN)")
+pairs_up_tabac   <- get_multimir_pairs(tabac_mir_up,   tabac_mrna_down, "Tabac Chauffé (miR UP / ARNm DOWN)")
+
+# miARN DOWN / ARNm UP
+pairs_down_cigar <- get_multimir_pairs(cigar_mir_down, cigar_mrna_up,   "Cigarette (miR DOWN / ARNm UP)")
+pairs_down_tabac <- get_multimir_pairs(tabac_mir_down, tabac_mrna_up,   "Tabac Chauffé (miR DOWN / ARNm UP)")
+
+# Affichage
+for (res in list(
+  list(pairs_up_cigar,   "Cigarette — miR UP / ARNm DOWN"),
+  list(pairs_up_tabac,   "Tabac Chauffé — miR UP / ARNm DOWN"),
+  list(pairs_down_cigar, "Cigarette — miR DOWN / ARNm UP"),
+  list(pairs_down_tabac, "Tabac Chauffé — miR DOWN / ARNm UP")
+)) {
+  cat("\n===", res[[2]], "===\n")
+  if (!is.null(res[[1]]) && nrow(res[[1]]) > 0) {
+    cat("Interactions trouvées :", nrow(res[[1]]), "\n")
+    print(res[[1]])
+  } else {
+    cat("Aucune interaction validée.\n")
+  }
+}
+```
+
+```{r export_excel}
+# Export multi-onglets
+wb <- createWorkbook()
+
+sheets <- list(
+  "Cig_miRUP_ARNmDOWN"  = pairs_up_cigar,
+  "Tab_miRUP_ARNmDOWN"  = pairs_up_tabac,
+  "Cig_miRDOWN_ARNmUP"  = pairs_down_cigar,
+  "Tab_miRDOWN_ARNmUP"  = pairs_down_tabac
+)
+
+for (sheet_name in names(sheets)) {
+  data <- sheets[[sheet_name]]
+  if (!is.null(data) && nrow(data) > 0) {
+    addWorksheet(wb, sheet_name)
+    writeData(wb, sheet_name, data)
+  }
+}
+
+saveWorkbook(wb, "Interactions_miARN_ARNm_multiMiR.xlsx", overwrite = TRUE)
+message("Export Excel créé : Interactions_miARN_ARNm_multiMiR.xlsx")
+```
+
+
+# ============================================================
+# 8. INFORMATIONS DE SESSION
+# ============================================================
+
+```{r session_info}
+sessionInfo()
+```

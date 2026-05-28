@@ -38,6 +38,7 @@ The bioinformatic analysis includes :
 | `MA_plots/` | MA plots for mRNA (cigarette and heated tobacco) |
 | `venn_diagrams/` | Venn diagrams for mRNA and miRNA |
 | `heatmap/` | Heatmap of the 41 common DEGs |
+| `pie_charts/` | Pie charts for miRNA distribution (cigarette and heated tobacco) |
 | `enrichissement/` | GO:BP ORA/GSEA dotplots and KEGG barplot |
 | `reseaux_PPI/` | STRING-db networks (cigarette, heated tobacco, common) |
 

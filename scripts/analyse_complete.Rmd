@@ -32,7 +32,6 @@ theme_set(theme_minimal(base_size = 12))
 options(scipen = 999)
 ```
 
-
 # ============================================================
 # 2. DATA LOADING & PREPARATION
 # ============================================================
@@ -64,7 +63,6 @@ cat("miRNA Tobacco   :", nrow(tabac_mi), "lignes\n")
 cat("\nNA padj ARNm - Cigarette :", sum(is.na(cigar_df$padj)), "\n")
 cat("NA padj mRNA - Tobacco    :", sum(is.na(tabac_df$padj)), "\n")
 ```
-
 
 # ============================================================
 # 3. FILTERING OF DYSREGULATED GENES AND miRNAs
@@ -137,7 +135,6 @@ cat("Significant miRNA - Tobacco    :", nrow(sig_tabac_mi),
     sum(sig_tabac_mi$regulation == "Downregulated"), "DOWN)\n")
 cat("Common miRNA        :", length(mi_communs), "->", mi_communs, "\n")
 ```
-
 
 # ============================================================
 # 4. mRNA VISUALIZATION
@@ -299,7 +296,6 @@ pheatmap(heatmap_matrix,
          filename = "Heatmap_Signature_Commune.png", width = 7, height = 10)
 ```
 
-
 # ============================================================
 # 5. miRNA VISUALIZATION
 # ============================================================
@@ -417,7 +413,6 @@ if (length(mi_communs) > 0) {
          plot = p_commun_mi, width = 7, height = 6, dpi = 300)
 }
 ```
-
 
 # ============================================================
 # 6. FUNCTIONAL ENRICHMENT
@@ -566,9 +561,8 @@ if (!is.null(gsea_tabac)) {
 }
 ```
 
-
 # ============================================================
-# 7. miRNA / mRNA INTEGRATION (multiMiR)
+# 7a. miRNA / mRNA INTEGRATION (multiMiR)
 # ============================================================
 
 ```{r extraction_listes_integration}
@@ -655,6 +649,71 @@ saveWorkbook(wb, "Interactions_miRNA_mRNA_multiMiR.xlsx", overwrite = TRUE)
 message("Excel export created: Interactions_miRNA_mRNA_multiMiR.xlsx")
 ```
 
+# ============================================================
+# 7b. miRWalk PREDICTED INTERACTIONS (seed = 1, bindingp ≥ 0.95)
+# ============================================================
+
+```{r mirwalk_predictions}
+# Load miRWalk prediction files (to be placed in working directory)
+cig_pred_raw <- read.csv("Interaction miR_ARNm pour Cigarette (prédiction).csv")
+tab_pred_raw <- read.csv("Interaction miR_ARNm pour Tabac (prédiction).csv")
+
+# Apply strict filters: seed = 1 and bindingp >= 0.95
+cig_pred_filt <- cig_pred_raw %>%
+  filter(seed == 1, bindingp >= 0.95) %>%
+  filter(mirnaid %in% cigar_mir_up) %>%
+  dplyr::select(mirnaid, genesymbol, bindingp, seed) %>%
+  distinct()
+
+tab_pred_filt <- tab_pred_raw %>%
+  filter(seed == 1, bindingp >= 0.95) %>%
+  filter(mirnaid %in% tabac_mir_up) %>%
+  dplyr::select(mirnaid, genesymbol, bindingp, seed) %>%
+  distinct()
+
+cat("Cigarette — miRWalk filtered predictions:", nrow(cig_pred_filt), "interactions,",
+    n_distinct(cig_pred_filt$genesymbol), "unique genes\n")
+cat("Heated tobacco — miRWalk filtered predictions:", nrow(tab_pred_filt), "interactions,",
+    n_distinct(tab_pred_filt$genesymbol), "unique genes\n")
+
+# Export to Excel
+wb_pred <- createWorkbook()
+addWorksheet(wb_pred, "Cig_miRWalk_filtered")
+writeData(wb_pred, "Cig_miRWalk_filtered", cig_pred_filt)
+addWorksheet(wb_pred, "Tab_miRWalk_filtered")
+writeData(wb_pred, "Tab_miRWalk_filtered", tab_pred_filt)
+saveWorkbook(wb_pred, "Predictions_miRWalk_filtered.xlsx", overwrite = TRUE)
+message("Excel export created: Predictions_miRWalk_filtered.xlsx")
+```
+
+# ============================================================
+# 7c. COMMON miRNA TARGET GENES BETWEEN CONDITIONS
+# ============================================================
+
+```{r common_mirna_targets}
+# Unique validated target genes per condition (all regulatory directions combined)
+cig_targets_val <- unique(c(pairs_up_cigar$target_symbol, pairs_down_cigar$target_symbol))
+tab_targets_val <- unique(c(pairs_up_tabac$target_symbol, pairs_down_tabac$target_symbol))
+
+cat("Unique validated target genes — Cigarette:", length(cig_targets_val), "\n")
+cat("Unique validated target genes — Heated tobacco:", length(tab_targets_val), "\n")
+
+# Intersection (validated only)
+common_targets_val <- intersect(cig_targets_val, tab_targets_val)
+cat("\nCommon target genes — Validated only:", length(common_targets_val), "\n")
+print(sort(common_targets_val))
+
+# Unique predicted target genes per condition
+cig_targets_pred <- unique(cig_pred_filt$genesymbol)
+tab_targets_pred <- unique(tab_pred_filt$genesymbol)
+
+# Intersection (validated + predicted)
+cig_targets_all <- unique(c(cig_targets_val, cig_targets_pred))
+tab_targets_all <- unique(c(tab_targets_val, tab_targets_pred))
+common_targets_all <- intersect(cig_targets_all, tab_targets_all)
+cat("\nCommon target genes — Validated + Predicted:", length(common_targets_all), "\n")
+print(sort(common_targets_all))
+```
 
 # ============================================================
 # 8. SESSION INFORMATION

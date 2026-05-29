@@ -1,9 +1,9 @@
-# Comparative study of transcriptomic profiles (mRNA and miRNA) induced by exposure to conventional cigarettes and heated tobacco in mice
+# Integrative transcriptomic analysis of mRNA and miRNA dysregulation induced by cigarette smoke and heated tobacco aerosol in mouse lung tissue
 
 ## Description
 This repository contains the bioinformatic scripts used in the context of a Master 1 internship in Bioinformatics, OMICS and Systems Biology track, at the University of Lille — Faculty of Science and Technology, conducted within the IMPECS laboratory (ULR 4483), Research Center, Lille.
 
-The study investigates transcriptomic dysregulations induced by exposure to **conventional cigarette smoke (1R6F)** and **heated tobacco (IQOS)** in mice (*Mus musculus*, A/J male strain), based on RNA-seq (mRNA) and small RNA-seq (miRNA) data from lung tissue.
+The study investigates transcriptomic dysregulations induced by exposure to **conventional cigarette smoke (1R6F)** and **heated tobacco aerosol (IQOS)** in mice (*Mus musculus*, A/J male strain), based on RNA-seq (mRNA) and small RNA-seq (miRNA) data from lung tissue.
 
 - **Internship supervisor** : Dr. Sébastien Anthérieu
 - **Academic tutor** : Dr. Morgane Baron
@@ -15,7 +15,7 @@ The study investigates transcriptomic dysregulations induced by exposure to **co
 
 The bioinformatic analysis includes :
 - **Filtering of dysregulated mRNAs and miRNAs** from DESeq2 pre-processed data provided by the IMPECS laboratory
-- **Data visualization** (volcano plots, MA plots, heatmap, Venn diagrams)
+- **Data visualization** (volcano plots, MA plots, heatmap, Venn diagrams, pie charts)
 - **Functional enrichment** GO:BP (ORA and GSEA) and KEGG (clusterProfiler)
 - **miRNA/mRNA integration** using validated (multiMiR) and predicted (miRWalk) interactions
 - **PPI network analysis** (STRING-db v12.0)
@@ -28,7 +28,7 @@ The bioinformatic analysis includes :
 
 | File | Description |
 |------|-------------|
-| `analyse_complete.Rmd` | Single R Markdown script containing the complete analysis: mRNA and miRNA filtering, visualization (volcano plots, MA plots, heatmap, Venn diagrams), functional enrichment GO/KEGG/GSEA, miRNA/mRNA integration (multiMiR, miRWalk) |
+| `analyse_complete.Rmd` | Single R Markdown script containing the complete analysis: mRNA and miRNA filtering, visualization (volcano plots, MA plots, heatmap, Venn diagrams, pie charts), functional enrichment GO/KEGG/GSEA, miRNA/mRNA integration (multiMiR, miRWalk) |
 
 ### Figures
 
@@ -40,7 +40,7 @@ The bioinformatic analysis includes :
 | `heatmap/` | Heatmap of the 41 common DEGs |
 | `pie_charts/` | Pie charts for miRNA distribution (cigarette and heated tobacco) |
 | `enrichissement/` | GO:BP ORA/GSEA dotplots and KEGG barplot |
-| `reseaux_PPI/` | STRING-db networks (cigarette, heated tobacco, common) |
+| `reseaux_PPI/` | STRING-db PPI networks (cigarette, heated tobacco, common targets) |
 
 ---
 
@@ -92,11 +92,11 @@ Two complementary levels of evidence :
 
 | Condition | Dysregulated mRNAs | Dysregulated miRNAs | Hub miRNA | Dominant biological profile |
 |-----------|-------------------|---------------------|-----------|----------------------------|
-| Conventional cigarette | 535 (410 UP / 125 DOWN) | 24 (15 UP / 9 DOWN) | mmu-miR-21a-5p (19 targets) | Genotoxicity, genomic instability, neutrophilic inflammation |
-| Heated tobacco (IQOS) | 84 (28 UP / 56 DOWN) | 20 (14 UP / 6 DOWN) | mmu-miR-1a-3p (15 targets) | ECM remodeling, circadian disruption, immunosuppression |
+| Conventional cigarette | 535 (410 UP / 125 DOWN) | 24 (15 UP / 9 DOWN) | mmu-miR-21a-5p (18 validated targets) | Genotoxicity, genomic instability, neutrophilic inflammation |
+| Heated tobacco (IQOS) | 84 (28 UP / 56 DOWN) | 20 (14 UP / 6 DOWN) | mmu-miR-1a-3p (17 validated targets) | ECM remodeling, circadian disruption, immunosuppression |
 | Common | 41 mRNAs (incl. *Lilrb4b* inversed) | 1 (mmu-miR-135b-5p, opposite regulation) | — | Circadian disruption, IL-17 inflammation |
 
-> **Common miRNA-regulated core** : *Dio2*, *Ikzf4*, *Nfil3*, *Npas2*, *S100a8*, *Spaar*
+> **Common miRNA-regulated core (14 genes)** : *Dio2*, *Ikzf4*, *Nfil3*, *Npas2*, *S100a8*, *Spaar* and 8 additional shared targets
 
 ---
 
